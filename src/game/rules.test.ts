@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   applyDamage,
+  evaluateOnlineRoomReadiness,
   resolveRoundOutcome,
   resolveCircleBoxCollisions,
   rayIntersectsBox,
@@ -123,4 +124,53 @@ test('4-digit tag normalization and room codes match rules format', () => {
   assert.equal(normalizeTag4('123456'), '1234');
   assert.match(normalizeTag4(''), /^[0-9]{4}$/);
   assert.match(generateRoomCode('LW'), /^LW[2-9A-Z]{4}$/);
+});
+
+test('Online readiness blocks solo players and bots, only allowing real opposing humans', () => {
+  const solo = evaluateOnlineRoomReadiness({
+    mode: '1v1',
+    isPrivate: false,
+    participants: [{ team: 'A', isBot: false }],
+  });
+  assert.equal(solo.canStart, false);
+
+  const withBot = evaluateOnlineRoomReadiness({
+    mode: '1v1',
+    isPrivate: false,
+    participants: [
+      { team: 'A', isBot: false },
+      { team: 'B', isBot: true },
+    ],
+  });
+  assert.equal(withBot.canStart, false);
+
+  const matched1v1 = evaluateOnlineRoomReadiness({
+    mode: '1v1',
+    isPrivate: false,
+    participants: [
+      { team: 'A', isBot: false },
+      { team: 'B', isBot: false },
+    ],
+  });
+  assert.equal(matched1v1.canStart, true);
+
+  const partial2v2Quick = evaluateOnlineRoomReadiness({
+    mode: '2v2',
+    isPrivate: false,
+    participants: [
+      { team: 'A', isBot: false },
+      { team: 'B', isBot: false },
+    ],
+  });
+  assert.equal(partial2v2Quick.canStart, false);
+
+  const custom2v2Ready = evaluateOnlineRoomReadiness({
+    mode: '2v2',
+    isPrivate: true,
+    participants: [
+      { team: 'A', isBot: false },
+      { team: 'B', isBot: false },
+    ],
+  });
+  assert.equal(custom2v2Ready.canStart, true);
 });

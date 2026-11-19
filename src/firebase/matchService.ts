@@ -403,16 +403,27 @@ export async function findOrCreateQuickRoom(
       where('isPrivate', '==', false),
       where('mode', '==', mode),
       where('status', '==', 'waiting'),
-      limit(8),
+      limit(10),
     );
     const snap = await getDocs(q);
     for (const d of snap.docs) {
       const room = d.data() as MatchRoomDoc;
-      const partsSnap = await getDocs(collection(db, 'rooms', room.roomId, 'participants'));
+      const partsQ = query(
+        collection(db, 'rooms', room.roomId, 'participants'),
+        where('roomId', '==', room.roomId),
+      );
+      const partsSnap = await getDocs(partsQ);
       const parts = partsSnap.docs.map((p) => p.data() as RoomParticipantDoc);
+      const realParts = parts.filter((p) => !p.isBot);
+      // Skip abandoned waiting rooms with no real players
+      if (realParts.length === 0) continue;
+
+      const existing = realParts.find((p) => p.participantId === player.playerId);
+      if (existing) return room;
+
       const maxPerTeam = mode === '1v1' ? 1 : 2;
-      const teamACount = parts.filter((p) => p.team === 'A' && !p.isBot).length;
-      const teamBCount = parts.filter((p) => p.team === 'B' && !p.isBot).length;
+      const teamACount = realParts.filter((p) => p.team === 'A').length;
+      const teamBCount = realParts.filter((p) => p.team === 'B').length;
 
       if (teamBCount < maxPerTeam) {
         await joinParticipant(room.roomId, player, 'B', teamBCount, false);
@@ -433,7 +444,7 @@ export async function findOrCreateQuickRoom(
     host: player,
     mode,
     isPrivate: false,
-    fillWithBots: true,
+    fillWithBots: false,
   });
 }
 
@@ -450,14 +461,18 @@ export async function joinRoomByCode(
     const room = snap.data() as MatchRoomDoc;
     if (room.status === 'finished') return null;
 
-    const partsSnap = await getDocs(collection(db, 'rooms', code, 'participants'));
+    const partsQ = query(
+      collection(db, 'rooms', code, 'participants'),
+      where('roomId', '==', code),
+    );
+    const partsSnap = await getDocs(partsQ);
     const parts = partsSnap.docs.map((p) => p.data() as RoomParticipantDoc);
     const existing = parts.find((p) => p.participantId === player.playerId);
     if (existing) return room;
 
     const maxPerTeam = room.mode === '1v1' ? 1 : 2;
-    const teamA = parts.filter((p) => p.team === 'A');
-    const teamB = parts.filter((p) => p.team === 'B');
+    const teamA = parts.filter((p) => p.team === 'A' && !p.isBot);
+    const teamB = parts.filter((p) => p.team === 'B' && !p.isBot);
 
     if (teamB.length < maxPerTeam) {
       await joinParticipant(code, player, 'B', teamB.length, false);
@@ -727,10 +742,19 @@ export async function adjustSpectatorCount(roomId: string, delta: number): Promi
   }
 }
 
-export async function leaveRoomParticipant(roomId: string, participantId: string): Promise<void> {
-  const path = `rooms/${roomId}/participants/${participantId}`;
+export async function leaveRoomParticipant(
+  roomId: string,
+  participantId: string,
+  isHost = false,
+): Promise<void> {
   try {
     await deleteDoc(doc(db, 'rooms', roomId, 'participants', participantId));
+    if (isHost) {
+      const roomSnap = await getDoc(doc(db, 'rooms', roomId));
+      if (roomSnap.exists() && (roomSnap.data() as MatchRoomDoc).status === 'waiting') {
+        await deleteDoc(doc(db, 'rooms', roomId));
+      }
+    }
   } catch {
     // Non-critical cleanup on leave
   }

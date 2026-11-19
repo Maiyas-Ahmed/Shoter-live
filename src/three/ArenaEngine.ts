@@ -31,6 +31,7 @@ import {
   buildArenaObstacleMesh,
   buildGlooShieldMesh,
   buildSoldierModel,
+  createBulletProjectileGeometry,
   type SoldierRig,
 } from './models';
 import { createArenaTextures, type ArenaTextures } from './textures';
@@ -43,6 +44,7 @@ const _camGoal = new THREE.Vector3();
 const _lookGoal = new THREE.Vector3();
 const _mat4 = new THREE.Matrix4();
 const _quat = new THREE.Quaternion();
+const _euler = new THREE.Euler();
 const _scale = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 
@@ -138,6 +140,34 @@ interface ParticleSlot {
   vel: THREE.Vector3;
   scale: number;
   color: THREE.Color;
+}
+
+interface BulletSlot {
+  active: boolean;
+  life: number;
+  maxLife: number;
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  quat: THREE.Quaternion;
+}
+
+interface ShellSlot {
+  active: boolean;
+  life: number;
+  maxLife: number;
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  rotX: number;
+  rotZ: number;
+}
+
+interface MuzzleFlashSlot {
+  active: boolean;
+  life: number;
+  maxLife: number;
+  pos: THREE.Vector3;
+  quat: THREE.Quaternion;
+  scale: number;
 }
 
 export interface OnlineNetworkBridge {
@@ -240,10 +270,22 @@ export class ArenaEngine {
   // Danger Zone ring mesh
   private dangerRingMesh: THREE.Mesh;
 
-  // Pooled InstancedMesh tracers & sparks
+  // Pooled InstancedMesh tracers, sparks, 3D bullets, brass shells & muzzle flash
   private tracerMesh: THREE.InstancedMesh;
   private tracers: TracerSlot[] = [];
   private tracerCursor = 0;
+
+  private bulletMesh: THREE.InstancedMesh;
+  private bullets: BulletSlot[] = [];
+  private bulletCursor = 0;
+
+  private shellMesh: THREE.InstancedMesh;
+  private shells: ShellSlot[] = [];
+  private shellCursor = 0;
+
+  private muzzleFlashMesh: THREE.InstancedMesh;
+  private muzzleFlashes: MuzzleFlashSlot[] = [];
+  private muzzleCursor = 0;
 
   private sparkMesh: THREE.InstancedMesh;
   private sparks: ParticleSlot[] = [];
@@ -343,8 +385,8 @@ export class ArenaEngine {
     this.scene.add(this.dangerRingMesh);
 
     // Pooled tracer InstancedMesh (64 tracers)
-    const tracerGeo = new THREE.BoxGeometry(0.055, 0.055, 1);
-    const tracerMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+    const tracerGeo = new THREE.BoxGeometry(0.032, 0.032, 1);
+    const tracerMat = new THREE.MeshBasicMaterial({ color: 0xfde68a, transparent: true, opacity: 0.72 });
     this.tracerMesh = new THREE.InstancedMesh(tracerGeo, tracerMat, 64);
     this.tracerMesh.frustumCulled = false;
     this.scene.add(this.tracerMesh);
@@ -352,7 +394,7 @@ export class ArenaEngine {
       this.tracers.push({
         active: false,
         life: 0,
-        maxLife: 0.09,
+        maxLife: 0.08,
         pos: new THREE.Vector3(),
         quat: new THREE.Quaternion(),
         length: 1,
@@ -361,6 +403,82 @@ export class ArenaEngine {
       this.tracerMesh.setMatrixAt(i, _mat4);
     }
     this.tracerMesh.instanceMatrix.needsUpdate = true;
+
+    // Pooled physical 3D brass/copper-jacketed pointed bullets (64 slots)
+    const bulletGeo = createBulletProjectileGeometry();
+    const bulletMat = new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      emissive: 0xb45309,
+      emissiveIntensity: 0.45,
+      roughness: 0.2,
+      metalness: 0.92,
+    });
+    this.bulletMesh = new THREE.InstancedMesh(bulletGeo, bulletMat, 64);
+    this.bulletMesh.frustumCulled = false;
+    this.scene.add(this.bulletMesh);
+    for (let i = 0; i < 64; i++) {
+      this.bullets.push({
+        active: false,
+        life: 0,
+        maxLife: 0.14,
+        pos: new THREE.Vector3(),
+        vel: new THREE.Vector3(),
+        quat: new THREE.Quaternion(),
+      });
+      _mat4.makeScale(0, 0, 0);
+      this.bulletMesh.setMatrixAt(i, _mat4);
+    }
+    this.bulletMesh.instanceMatrix.needsUpdate = true;
+
+    // Pooled spinning ejected brass shell casings (64 slots)
+    const shellGeo = new THREE.CylinderGeometry(0.016, 0.018, 0.075, 8);
+    const shellMat = new THREE.MeshStandardMaterial({
+      color: 0xfbbf24,
+      roughness: 0.25,
+      metalness: 0.95,
+    });
+    this.shellMesh = new THREE.InstancedMesh(shellGeo, shellMat, 64);
+    this.shellMesh.frustumCulled = false;
+    this.scene.add(this.shellMesh);
+    for (let i = 0; i < 64; i++) {
+      this.shells.push({
+        active: false,
+        life: 0,
+        maxLife: 0.85,
+        pos: new THREE.Vector3(),
+        vel: new THREE.Vector3(),
+        rotX: 0,
+        rotZ: 0,
+      });
+      _mat4.makeScale(0, 0, 0);
+      this.shellMesh.setMatrixAt(i, _mat4);
+    }
+    this.shellMesh.instanceMatrix.needsUpdate = true;
+
+    // Pooled 3D muzzle flash starburst cones (24 slots)
+    const flashGeo = new THREE.ConeGeometry(0.16, 0.42, 6);
+    flashGeo.rotateX(Math.PI / 2);
+    const flashMat = new THREE.MeshBasicMaterial({
+      color: 0xfef08a,
+      transparent: true,
+      opacity: 0.9,
+    });
+    this.muzzleFlashMesh = new THREE.InstancedMesh(flashGeo, flashMat, 24);
+    this.muzzleFlashMesh.frustumCulled = false;
+    this.scene.add(this.muzzleFlashMesh);
+    for (let i = 0; i < 24; i++) {
+      this.muzzleFlashes.push({
+        active: false,
+        life: 0,
+        maxLife: 0.055,
+        pos: new THREE.Vector3(),
+        quat: new THREE.Quaternion(),
+        scale: 1,
+      });
+      _mat4.makeScale(0, 0, 0);
+      this.muzzleFlashMesh.setMatrixAt(i, _mat4);
+    }
+    this.muzzleFlashMesh.instanceMatrix.needsUpdate = true;
 
     // Pooled spark InstancedMesh (96 sparks)
     const sparkGeo = new THREE.BoxGeometry(0.14, 0.14, 0.14);
@@ -918,6 +1036,8 @@ export class ArenaEngine {
 
       if (ev.type === 'shot') {
         this.spawnTracer(ev.ox, ev.oy, ev.oz, ev.dx, ev.dy, ev.dz, 26);
+        this.spawnBullet(ev.ox, ev.oy, ev.oz, ev.dx, ev.dy, ev.dz, 26);
+        this.spawnMuzzleFlash(ev.ox, ev.oy, ev.oz, ev.dx, ev.dy, ev.dz, 1.0);
         this.spawnSparkBurst(ev.ox, ev.oy, ev.oz, 3, 0xfef08a);
       } else if (ev.type === 'gloo') {
         const actor = this.actors.get(ev.actorId);
@@ -1299,8 +1419,8 @@ export class ArenaEngine {
       this.stepLocalPlayer(local, dt, nowMs, allObstacles, zoneRadius);
     }
 
-    // Update Tactical AI Bots (offline or online host)
-    if (this.isHost) {
+    // Update Tactical AI Bots ONLY in Offline Practice mode (NEVER in Online mode!)
+    if (this.mode === 'offline' && this.isHost) {
       for (const actor of this.actors.values()) {
         if (actor.isBot && actor.alive) {
           this.stepBotAI(actor, dt, nowMs, allObstacles, zoneRadius);
@@ -1308,7 +1428,7 @@ export class ArenaEngine {
       }
     }
 
-    // Interpolate Remote Actors & Animate All Rigs
+    // Interpolate Remote Actors & Animate All Rigs (with Knee Articulation + Recoil)
     for (const actor of this.actors.values()) {
       if (!actor.isLocal && !(actor.isBot && this.isHost)) {
         const k = 1 - Math.exp(-14 * dt);
@@ -1325,6 +1445,9 @@ export class ArenaEngine {
       actor.rig.root.position.set(actor.x, actor.y, actor.z);
       actor.rig.root.rotation.y = actor.yaw;
 
+      // Smooth recoil recovery on shooting arm
+      actor.rig.rightArm.rotation.x *= Math.exp(-14 * dt);
+
       // Hit flash decay
       if (actor.hitFlashTimer > 0) {
         actor.hitFlashTimer -= dt;
@@ -1338,17 +1461,21 @@ export class ArenaEngine {
         actor.rig.bodyGroup.rotation.x = progress * Math.PI * 0.48;
       }
 
-      // Distance-synced gait swing
+      // Distance-synced gait swing + knee bend
       const speed = Math.hypot(actor.vx, actor.vz);
       if (actor.alive && speed > 0.35) {
         actor.walkPhase += speed * dt * 1.45;
-        const swing = Math.sin(actor.walkPhase) * 0.52;
+        const swing = Math.sin(actor.walkPhase) * 0.56;
         actor.rig.leftLeg.rotation.x = swing;
         actor.rig.rightLeg.rotation.x = -swing;
-        actor.rig.bodyGroup.position.y = Math.abs(Math.sin(actor.walkPhase)) * 0.05;
+        actor.rig.leftKnee.rotation.x = Math.max(0, -swing * 0.72);
+        actor.rig.rightKnee.rotation.x = Math.max(0, swing * 0.72);
+        actor.rig.bodyGroup.position.y = Math.abs(Math.sin(actor.walkPhase)) * 0.055;
       } else {
         actor.rig.leftLeg.rotation.x *= 0.8;
         actor.rig.rightLeg.rotation.x *= 0.8;
+        actor.rig.leftKnee.rotation.x *= 0.8;
+        actor.rig.rightKnee.rotation.x *= 0.8;
         actor.rig.bodyGroup.position.y *= 0.8;
       }
     }
@@ -1775,6 +1902,7 @@ export class ArenaEngine {
       }
 
       this.spawnTracer(ox, oy, oz, ndx, ndy, ndz, hitDist);
+      this.spawnBullet(ox, oy, oz, ndx, ndy, ndz, hitDist);
 
       if (hitTarget) {
         const hx = ox + ndx * hitDist;
@@ -1789,6 +1917,12 @@ export class ArenaEngine {
         this.spawnSparkBurst(hx, hy, hz, 5, 0x94a3b8);
       }
     }
+
+    // Visual recoil kick, 3D muzzle flash, and spinning brass shell casing ejection
+    shooter.rig.rightArm.rotation.x = Math.max(-0.32, shooter.rig.rightArm.rotation.x - (shooter.weaponId === 'm1887' ? 0.24 : 0.11));
+    this.spawnMuzzleFlash(ox, oy, oz, baseDx, baseDy, baseDz, shooter.weaponId === 'm1887' ? 1.5 : 1.0);
+    shooter.rig.ejectPoint.getWorldPosition(_v3);
+    this.spawnShellCasing(_v3.x, _v3.y, _v3.z, shooter.yaw);
 
     if (this.mode === 'online' && this.networkBridge && shooter.isLocal) {
       this.networkBridge.sendShotEvent({
@@ -1946,6 +2080,65 @@ export class ArenaEngine {
     slot.quat.setFromUnitVectors(_v2.set(0, 0, 1), _v1);
   }
 
+  private spawnBullet(
+    ox: number,
+    oy: number,
+    oz: number,
+    dx: number,
+    dy: number,
+    dz: number,
+    dist: number,
+  ): void {
+    const slot = this.bullets[this.bulletCursor];
+    this.bulletCursor = (this.bulletCursor + 1) % this.bullets.length;
+    const speed = 135;
+    slot.active = true;
+    slot.life = 0;
+    slot.maxLife = Math.min(0.26, Math.max(0.04, dist / speed));
+    slot.pos.set(ox, oy, oz);
+    slot.vel.set(dx * speed, dy * speed, dz * speed);
+    _v1.set(dx, dy, dz).normalize();
+    slot.quat.setFromUnitVectors(_v2.set(0, 0, 1), _v1);
+  }
+
+  private spawnShellCasing(x: number, y: number, z: number, shooterYaw: number): void {
+    const slot = this.shells[this.shellCursor];
+    this.shellCursor = (this.shellCursor + 1) % this.shells.length;
+    const rightX = Math.cos(shooterYaw);
+    const rightZ = -Math.sin(shooterYaw);
+    slot.active = true;
+    slot.life = 0;
+    slot.maxLife = 0.85;
+    slot.pos.set(x, y, z);
+    slot.vel.set(
+      rightX * (2.2 + Math.random() * 1.4),
+      2.4 + Math.random() * 1.1,
+      rightZ * (2.2 + Math.random() * 1.4),
+    );
+    slot.rotX = Math.random() * Math.PI;
+    slot.rotZ = Math.random() * Math.PI;
+  }
+
+  private spawnMuzzleFlash(
+    ox: number,
+    oy: number,
+    oz: number,
+    dx: number,
+    dy: number,
+    dz: number,
+    scale: number,
+  ): void {
+    const slot = this.muzzleFlashes[this.muzzleCursor];
+    this.muzzleCursor = (this.muzzleCursor + 1) % this.muzzleFlashes.length;
+    slot.active = true;
+    slot.life = 0;
+    slot.maxLife = 0.055;
+    slot.pos.set(ox + dx * 0.14, oy + dy * 0.14, oz + dz * 0.14);
+    slot.scale = scale * (0.9 + Math.random() * 0.35);
+    _v1.set(dx, dy, dz).normalize();
+    slot.quat.setFromUnitVectors(_v2.set(0, 0, 1), _v1);
+  }
+
   private spawnSparkBurst(x: number, y: number, z: number, count: number, hexColor: number): void {
     for (let i = 0; i < count; i++) {
       const slot = this.sparks[this.sparkCursor];
@@ -1988,6 +2181,71 @@ export class ArenaEngine {
       this.tracerMesh.setMatrixAt(i, _mat4);
     }
     if (tracerDirty) this.tracerMesh.instanceMatrix.needsUpdate = true;
+
+    let bulletDirty = false;
+    for (let i = 0; i < this.bullets.length; i++) {
+      const b = this.bullets[i];
+      if (!b.active) continue;
+      bulletDirty = true;
+      b.life += dt;
+      if (b.life >= b.maxLife) {
+        b.active = false;
+        _mat4.makeScale(0, 0, 0);
+      } else {
+        b.pos.addScaledVector(b.vel, dt);
+        _scale.set(1.6, 1.6, 2.6);
+        _mat4.compose(b.pos, b.quat, _scale);
+      }
+      this.bulletMesh.setMatrixAt(i, _mat4);
+    }
+    if (bulletDirty) this.bulletMesh.instanceMatrix.needsUpdate = true;
+
+    let shellDirty = false;
+    for (let i = 0; i < this.shells.length; i++) {
+      const s = this.shells[i];
+      if (!s.active) continue;
+      shellDirty = true;
+      s.life += dt;
+      if (s.life >= s.maxLife) {
+        s.active = false;
+        _mat4.makeScale(0, 0, 0);
+      } else {
+        s.vel.y -= 14 * dt;
+        s.pos.addScaledVector(s.vel, dt);
+        if (s.pos.y < 0.03) {
+          s.pos.y = 0.03;
+          s.vel.y = Math.abs(s.vel.y) * 0.42;
+          s.vel.x *= 0.7;
+          s.vel.z *= 0.7;
+        }
+        s.rotX += 14 * dt;
+        s.rotZ += 11 * dt;
+        _euler.set(s.rotX, 0, s.rotZ);
+        _quat.setFromEuler(_euler);
+        _scale.set(1, 1, 1);
+        _mat4.compose(s.pos, _quat, _scale);
+      }
+      this.shellMesh.setMatrixAt(i, _mat4);
+    }
+    if (shellDirty) this.shellMesh.instanceMatrix.needsUpdate = true;
+
+    let flashDirty = false;
+    for (let i = 0; i < this.muzzleFlashes.length; i++) {
+      const f = this.muzzleFlashes[i];
+      if (!f.active) continue;
+      flashDirty = true;
+      f.life += dt;
+      if (f.life >= f.maxLife) {
+        f.active = false;
+        _mat4.makeScale(0, 0, 0);
+      } else {
+        const k = f.scale * (1 - f.life / f.maxLife);
+        _scale.set(k, k, k * 1.4);
+        _mat4.compose(f.pos, f.quat, _scale);
+      }
+      this.muzzleFlashMesh.setMatrixAt(i, _mat4);
+    }
+    if (flashDirty) this.muzzleFlashMesh.instanceMatrix.needsUpdate = true;
 
     let sparkDirty = false;
     for (let i = 0; i < this.sparks.length; i++) {

@@ -468,3 +468,59 @@ export function getDangerZoneRadius(elapsedSec: number, roundDurationSec = ROUND
   const t = Math.min(1, (elapsedSec - 30) / Math.max(1, roundDurationSec - 30));
   return (ARENA_HALF_EXTENT + 4) * (1 - t) + 5 * t;
 }
+
+export interface RoomReadinessInput {
+  mode: GameMode;
+  isPrivate: boolean;
+  participants: readonly { team: TeamId; isBot: boolean }[];
+}
+
+export interface RoomReadinessResult {
+  canStart: boolean;
+  realA: number;
+  realB: number;
+  requiredPerTeam: number;
+  reason: string;
+}
+
+/**
+ * Pure Online Rule: Online matches & custom rooms NEVER auto-fill with bots.
+ * Quick Online requires full real teams (1v1 = 1+1, 2v2 = 2+2).
+ * Custom Rooms require at least 1 real human player on both Team A and Team B.
+ */
+export function evaluateOnlineRoomReadiness(input: RoomReadinessInput): RoomReadinessResult {
+  const realA = input.participants.filter((p) => p.team === 'A' && !p.isBot).length;
+  const realB = input.participants.filter((p) => p.team === 'B' && !p.isBot).length;
+  const requiredPerTeam = input.mode === '1v1' ? 1 : 2;
+
+  if (input.isPrivate) {
+    if (realA < 1 || realB < 1) {
+      return {
+        canStart: false,
+        realA,
+        realB,
+        requiredPerTeam,
+        reason:
+          realB < 1
+            ? 'Waiting for a real player to join Team B (share Room Code).'
+            : 'Waiting for a real player on Team A.',
+      };
+    }
+    return { canStart: true, realA, realB, requiredPerTeam, reason: 'Ready to launch' };
+  }
+
+  if (realA < requiredPerTeam || realB < requiredPerTeam) {
+    const totalNow = realA + realB;
+    const totalNeeded = requiredPerTeam * 2;
+    return {
+      canStart: false,
+      realA,
+      realB,
+      requiredPerTeam,
+      reason: `Searching for real online players (${totalNow}/${totalNeeded} joined)...`,
+    };
+  }
+
+  return { canStart: true, realA, realB, requiredPerTeam, reason: 'All real players matched!' };
+}
+

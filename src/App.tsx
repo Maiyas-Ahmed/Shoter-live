@@ -13,7 +13,6 @@ import {
   findOrCreateQuickRoom,
   findRoomForSpectate,
   incrementPlayerStats,
-  joinParticipant,
   joinRoomByCode,
   leaveRoomParticipant,
   linkGoogleAccount,
@@ -38,13 +37,13 @@ import {
 } from './firebase/matchService';
 import {
   buildPlayerId,
+  evaluateOnlineRoomReadiness,
   getSpawnPoint,
   normalizeTag4,
   PLAYER_MAX_ARMOR,
   PLAYER_MAX_HP,
   sanitizePlayerName,
   type GameMode,
-  type TeamId,
   type WeaponId,
 } from './game/rules';
 import { ArenaEngine, type HudSnapshot } from './three/ArenaEngine';
@@ -494,32 +493,17 @@ function AppContent() {
 
   const handleHostStartRoom = async () => {
     if (!activeRoom) return;
-    const maxPerTeam = activeRoom.mode === '1v1' ? 1 : 2;
-    const teamA = roomParticipants.filter((p) => p.team === 'A');
-    const teamB = roomParticipants.filter((p) => p.team === 'B');
-
-    // Fill missing slots with Tactical AI Bots if enabled
-    if (activeRoom.fillWithBots) {
-      for (let slot = teamA.length; slot < maxPerTeam; slot++) {
-        await joinParticipant(
-          activeRoom.roomId,
-          { playerId: `bot_A_${slot}`, name: `AlphaBot`, tag4: `700${slot + 1}` },
-          'A',
-          slot,
-          true,
-        );
-      }
-      for (let slot = teamB.length; slot < maxPerTeam; slot++) {
-        await joinParticipant(
-          activeRoom.roomId,
-          { playerId: `bot_B_${slot}`, name: `ViperBot`, tag4: `900${slot + 1}` },
-          'B',
-          slot,
-          true,
-        );
-      }
+    const readiness = evaluateOnlineRoomReadiness({
+      mode: activeRoom.mode,
+      isPrivate: activeRoom.isPrivate,
+      participants: roomParticipants,
+    });
+    if (!readiness.canStart) {
+      setStatusMessage(readiness.reason);
+      return;
     }
 
+    setStatusMessage('');
     await updateRoomState(activeRoom.roomId, {
       status: 'playing',
       roundNumber: 1,
@@ -533,7 +517,11 @@ function AppContent() {
 
   const handleExitToLobby = () => {
     if (activeRoom && screen === 'playing') {
-      leaveRoomParticipant(activeRoom.roomId, profile.playerId).catch(() => {});
+      leaveRoomParticipant(
+        activeRoom.roomId,
+        profile.playerId,
+        activeRoom.hostId === profile.playerId,
+      ).catch(() => {});
     }
     setActiveRoom(null);
     setRoomParticipants([]);
@@ -576,9 +564,16 @@ function AppContent() {
           onJoinRoomCode={handleJoinRoomCode}
           onSpectateCode={handleSpectateCode}
           onLeaveRoom={() => {
-            if (activeRoom) leaveRoomParticipant(activeRoom.roomId, profile.playerId).catch(() => {});
+            if (activeRoom) {
+              leaveRoomParticipant(
+                activeRoom.roomId,
+                profile.playerId,
+                activeRoom.hostId === profile.playerId,
+              ).catch(() => {});
+            }
             setActiveRoom(null);
             setRoomParticipants([]);
+            setStatusMessage('');
           }}
           onToggleReady={() => {
             if (!activeRoom) return;
