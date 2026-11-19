@@ -1,0 +1,6 @@
+{
+  "name": "Lone Wolf 3D — Tactical TPP Arena",
+  "description": "Free Fire Lone Wolf inspired 3D Third-Person Shooter with 5-round duels (1v1 & 2v2), custom room codes, live spectator mode, friend requests, and offline bot arena.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

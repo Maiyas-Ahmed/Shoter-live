@@ -1,0 +1,159 @@
+{
+  "entities": {
+    "PlayerProfile": {
+      "title": "PlayerProfile",
+      "description": "Public tactical player profile identified by Name and 4-digit ID (no mandatory auth required; optional Google UID link).",
+      "type": "object",
+      "properties": {
+        "playerId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 24 },
+        "tag4": { "type": "string", "minLength": 4, "maxLength": 4, "pattern": "^[0-9]{4}$" },
+        "googleUid": { "type": "string", "maxLength": 128 },
+        "wins": { "type": "integer" },
+        "matches": { "type": "integer" },
+        "kills": { "type": "integer" },
+        "status": { "type": "string", "enum": ["online", "in_lobby", "in_match", "offline"] },
+        "currentRoomId": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["playerId", "name", "tag4", "wins", "matches", "kills", "status", "createdAt", "updatedAt"]
+    },
+    "FriendRequest": {
+      "title": "FriendRequest",
+      "description": "Friend request or accepted friendship between two player IDs.",
+      "type": "object",
+      "properties": {
+        "requestId": { "type": "string", "minLength": 3, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fromId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fromName": { "type": "string", "minLength": 1, "maxLength": 24 },
+        "fromTag4": { "type": "string", "minLength": 4, "maxLength": 4, "pattern": "^[0-9]{4}$" },
+        "toId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "toName": { "type": "string", "minLength": 1, "maxLength": 24 },
+        "toTag4": { "type": "string", "minLength": 4, "maxLength": 4, "pattern": "^[0-9]{4}$" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"] },
+        "roomInviteCode": { "type": "string", "maxLength": 16 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["requestId", "fromId", "fromName", "fromTag4", "toId", "toName", "toTag4", "status", "createdAt", "updatedAt"]
+    },
+    "MatchRoom": {
+      "title": "MatchRoom",
+      "description": "Lone Wolf 1v1 or 2v2 real-time match room (Race to 5 round wins).",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string", "minLength": 4, "maxLength": 16, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "spectatorCode": { "type": "string", "minLength": 4, "maxLength": 16, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "mode": { "type": "string", "enum": ["1v1", "2v2"] },
+        "isPrivate": { "type": "boolean" },
+        "hostId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "hostName": { "type": "string", "minLength": 1, "maxLength": 24 },
+        "status": { "type": "string", "enum": ["waiting", "loadout", "playing", "round_end", "finished"] },
+        "targetRounds": { "type": "integer" },
+        "roundNumber": { "type": "integer" },
+        "scoreA": { "type": "integer" },
+        "scoreB": { "type": "integer" },
+        "roundWinner": { "type": "string", "enum": ["", "A", "B", "draw"] },
+        "matchWinner": { "type": "string", "enum": ["", "A", "B"] },
+        "roundStartedAtMs": { "type": "number" },
+        "roundDurationSec": { "type": "integer" },
+        "fillWithBots": { "type": "boolean" },
+        "spectatorCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "roomId", "spectatorCode", "mode", "isPrivate", "hostId", "hostName",
+        "status", "targetRounds", "roundNumber", "scoreA", "scoreB",
+        "roundWinner", "matchWinner", "roundStartedAtMs", "roundDurationSec",
+        "fillWithBots", "spectatorCount", "createdAt", "updatedAt"
+      ]
+    },
+    "RoomParticipant": {
+      "title": "RoomParticipant",
+      "description": "Real-time state of a combatant (human or bot) inside a Lone Wolf match room.",
+      "type": "object",
+      "properties": {
+        "participantId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "roomId": { "type": "string", "minLength": 4, "maxLength": 16, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 24 },
+        "tag4": { "type": "string", "minLength": 4, "maxLength": 4, "pattern": "^[0-9]{4}$" },
+        "team": { "type": "string", "enum": ["A", "B"] },
+        "slot": { "type": "integer" },
+        "isBot": { "type": "boolean" },
+        "ready": { "type": "boolean" },
+        "weaponId": { "type": "string", "enum": ["mp40", "ak47", "m1887", "awm"] },
+        "hp": { "type": "number" },
+        "armor": { "type": "number" },
+        "alive": { "type": "boolean" },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" },
+        "yaw": { "type": "number" },
+        "pitch": { "type": "number" },
+        "vx": { "type": "number" },
+        "vz": { "type": "number" },
+        "kills": { "type": "integer" },
+        "deaths": { "type": "integer" },
+        "damageDealt": { "type": "number" },
+        "glooCount": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "participantId", "roomId", "name", "tag4", "team", "slot", "isBot",
+        "ready", "weaponId", "hp", "armor", "alive", "x", "y", "z", "yaw", "pitch",
+        "vx", "vz", "kills", "deaths", "damageDealt", "glooCount", "updatedAt"
+      ]
+    },
+    "RoomEvent": {
+      "title": "RoomEvent",
+      "description": "Real-time shot, hit, gloo-shield, or round event synced to combatants and spectators.",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "roomId": { "type": "string", "minLength": 4, "maxLength": 16, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "type": { "type": "string", "enum": ["shot", "hit", "gloo", "kill", "round_win"] },
+        "actorId": { "type": "string", "minLength": 3, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "targetId": { "type": "string", "maxLength": 64 },
+        "weaponId": { "type": "string", "maxLength": 16 },
+        "ox": { "type": "number" },
+        "oy": { "type": "number" },
+        "oz": { "type": "number" },
+        "dx": { "type": "number" },
+        "dy": { "type": "number" },
+        "dz": { "type": "number" },
+        "damage": { "type": "number" },
+        "isHeadshot": { "type": "boolean" },
+        "roundNumber": { "type": "integer" },
+        "createdAtMs": { "type": "number" }
+      },
+      "required": [
+        "eventId", "roomId", "type", "actorId", "targetId", "weaponId",
+        "ox", "oy", "oz", "dx", "dy", "dz", "damage", "isHeadshot", "roundNumber", "createdAtMs"
+      ]
+    }
+  },
+  "firestore": {
+    "/players/{playerId}": {
+      "schema": { "$ref": "#/entities/PlayerProfile" },
+      "description": "Player tactical profiles keyed by unique playerId (Name + 4-digit tag)."
+    },
+    "/friendRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/FriendRequest" },
+      "description": "Friend requests, accepted friendships, and room invites."
+    },
+    "/rooms/{roomId}": {
+      "schema": { "$ref": "#/entities/MatchRoom" },
+      "description": "Lone Wolf 1v1 and 2v2 match rooms with spectator codes."
+    },
+    "/rooms/{roomId}/participants/{participantId}": {
+      "schema": { "$ref": "#/entities/RoomParticipant" },
+      "description": "Live combatant transforms, HP, armor, weapon, and K/D stats inside a room."
+    },
+    "/rooms/{roomId}/events/{eventId}": {
+      "schema": { "$ref": "#/entities/RoomEvent" },
+      "description": "Real-time combat events (shots, hits, gloo shields, kills) for sync & spectators."
+    }
+  }
+}
